@@ -1,0 +1,10 @@
+.Rhistory
+.Rproj.user/
+*.RData
+*.rds
+*.csv~
+*.log
+*.aux
+*.out
+*.synctex.gz
+tmlr_recomputed/

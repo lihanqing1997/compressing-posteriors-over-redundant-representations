@@ -1,0 +1,141 @@
+schema_version: 1
+protocol_id: constrained-tmlr-revision-2026-08-13
+status: exact_component_frozen_before_production
+frozen_on: 2026-08-13
+release_extract_created_on: 2026-08-15
+scope: >-
+  Exact-reference evaluation of constrained minimum-cost regional selection.
+  The six canonical production tables retain every registered method-setting
+  run, including non-success statuses. Smoke and pilot outputs are excluded
+  from reported estimates.
+source_note: >-
+  This release file extracts the exact-study component of the broader internal
+  protocol frozen before production. The extraction removes unreported
+  components but does not change the exact-study settings, seeds, gates, or
+  output grid used by the canonical rows.
+
+claims_contract:
+  supported:
+    - exact optimization and cost-sandwich correctness under exact intervals
+    - recorded simultaneous interval coverage under the stated stochastic assumptions
+    - omitted-mass feasibility and coverage at each declared epsilon
+    - exact cost recovery when declared groups align with the generating blocks
+    - explicit loss of certificate sharpness under perturbed or crossed groupings
+  prohibited:
+    - polynomial worst-case complexity
+    - automatic discovery of semantically correct regions
+    - universal runtime improvement
+    - superiority to full-posterior samplers
+    - generalization beyond the reported Gaussian BMA designs
+
+cost_contract:
+  primary_name: scheduled_regional_work_units
+  unit: >-
+    One predeclared regional work unit. The group-state tree assigns base cost
+    1 and incremental costs zero=1, one=2, multi=2. The integers represent
+    preallocated downstream work, are fixed before search, and are additive
+    over selected terminal regions. They are not elapsed time.
+  tree_parameters:
+    base_cost: 1
+    state_cost: {zero: 1, one: 2, multi: 2}
+  measured_separately:
+    - raw_score_requests
+    - distinct_score_evaluations
+    - bound_score_requests
+    - evidence_score_requests
+    - downstream_score_requests
+    - elapsed_seconds
+
+global_design:
+  epsilon: [0.01, 0.05, 0.10, 0.20]
+  delta: 0.05
+  cost_gap_tolerance: 0.999999
+  lattice_spacing: 1
+  production_replications_per_cell: 100
+  pilot_replications_per_cell: 5
+  smoke_replications_per_cell: 2
+  evidence_settings:
+    registered_estimator: iid
+    pilot_paths: 60
+    production_paths_grid: [100, 250, 500]
+    maximum_production_paths_per_node: 2500
+    maximum_relative_radius: 0.20
+    pilot_mutation_steps: 1
+    production_mutation_steps: 1
+  status_levels:
+    - bounds-met
+    - tolerance-not-met
+    - interval-conflict
+    - uninformative-evidence
+    - budget-exhausted
+    - invalid-input
+    - implementation-error
+  frozen_exact_study_decision:
+    score_budget: 25000
+    minimum_paths: 100
+    qualifying_aligned_p12_pilots: 5
+    total_aligned_p12_pilots: 5
+
+seed_registry:
+  smoke_base: 202680000
+  pilot_base: 202681000
+  exact_production_base: 202682000
+  data_seed_formula: >-
+    base + 100000*p_index + 10000*regime_index + 100*replication.
+  algorithm_seed_formula: >-
+    data_seed + 10*epsilon_index + interval_method_index.
+
+exact_constrained_study:
+  status: completed
+  dimensions: [12, 16]
+  data_model:
+    n_train: {p12: 30, p16: 40}
+    n_test: 500
+    within_pair_correlation: 0.95
+    signal: 1.4
+    active_groups: [1, 3, 5]
+    active_coefficient_multipliers: [1, -0.8, 0.7]
+    training_pair_construction: disjoint_orthonormal_basis_triples
+    center_response_by_training_mean: true
+    sigma: 1
+    heterogeneous_effects: false
+    inclusion_probability: 0.10
+    slab_variance_multiplier: 2
+    moderate_cross_group_factor_variance: 0.001
+  declared_tree:
+    max_depth: {p12: 5, p16: 6}
+    split_order: semantic_group_order
+    interpretation: >-
+      Unsplit groups remain free inside a terminal region. The exact optimum is
+      defined over 243 terminal regions at p=12 and 729 at p=16.
+  data_regimes:
+    aligned:
+      description: declared pairs match the correlated predictor blocks
+    perturbed:
+      description: declared pairs remain aligned while a weak shared latent factor introduces cross-group dependence
+    crossed:
+      description: declared pairs systematically cross two generating blocks
+  reference: complete_enumeration
+  interval_modes: [exact, stochastic]
+  reuse_rule: >-
+    The exact posterior is computed once per data set and shared across epsilon
+    values. Requested search scores are returned from that exact table while
+    raw requests and first visits are counted as through a memoized oracle.
+    Exact-study elapsed time is excluded from computational comparisons.
+
+gate_1:
+  status: passed
+  decision_point: after_exact_constrained_study
+  pass_requirements:
+    - zero deterministic sandwich violations with exact intervals
+    - exact optimizer agreement in every exact-mode row
+    - stochastic simultaneous-coverage point estimate at least 0.94 overall
+    - no unrecorded termination status
+    - aligned finite-incumbent rate at least 0.80 at epsilon 0.10
+    - perturbed finite-incumbent rate at least 0.60 at epsilon 0.10
+    - no budget overshoot or implementation error
+
+reporting:
+  retain_all_production_rows: true
+  exclude_smoke_and_pilot_from_estimands: true
+  summarize_failures_in_denominator: true

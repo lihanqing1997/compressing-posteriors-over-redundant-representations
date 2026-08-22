@@ -1,0 +1,56 @@
+ANONYMOUS TMLR REPRODUCTION PACKAGE
+
+This focused package supports the reported constrained exact-reference study.
+It contains the six canonical production tables, totaling 4,800 rows, the
+48-cell summary, the seven-check Gate 1 audit, the active implementation, and
+the scripts needed to validate their relationships.  It contains no pilot,
+smoke, cache, process-log, or historical output.
+
+Requirements
+  R 4.4.2 or a compatible recent R release
+  CRAN package: yaml
+  SHA-256 command: certutil (Windows), sha256sum, or shasum
+
+Run commands from the extracted supplement directory.
+
+First verify the untouched archive, then validate its focused protocol
+  Rscript sim/verify_release.R
+  Rscript sim/validate_tmlr_revision_protocol.R
+
+Recompute derived files from the supplied canonical rows without modifying the
+verified archive.  These commands write beside the extracted supplement.
+  Rscript sim/audit_constrained_exact_production.R ../tmlr_recomputed/constrained_exact_gate1_audit.csv
+  Rscript sim/summarize_tmlr_revision_results.R ../tmlr_recomputed/tmlr_constrained_exact_summary.csv
+  Rscript sim/make_tmlr_revision_figures.R ../tmlr_recomputed/figures
+
+Lightweight implementation tests
+  Rscript sim/run_region_restricted_smc_unit_tests.R
+  Rscript sim/run_constrained_region_search_unit_tests.R
+  Rscript sim/run_factorized_region_mass_unit_tests.R
+
+The canonical files are under sim/output/computational_study/.  Each of the six
+dimension-by-grouping files has 800 rows: 100 independently generated data
+sets, four omitted-mass tolerances, and exact or stochastic interval mode.
+The same generated data set and enumerated target are reused across its eight
+method-setting rows.  Algorithm seeds are distinct across tolerances and modes.
+
+The exact support table serves as a memoized score oracle after reference
+enumeration.  Raw score requests count calls before memoization and distinct
+evaluations count first visits.  This preserves the algorithmic work ledger,
+but exact-study elapsed time is not a marginal-likelihood timing comparison and
+is not used to claim runtime savings.
+
+Full production is intentionally not part of routine artifact verification.
+It is computationally expensive, and the canonical rows are supplied.  The
+runner accepts registered subsets, for example one data set:
+
+  Rscript sim/run_constrained_exact_study.R --mode=full --p=12 --regime=aligned --replication-ids=1 --budget=25000 --n-paths=100 --output=constrained_exact_check.csv
+
+The configuration at sim/config/constrained_exact_protocol.yml is an exact
+release extract of the study component fixed before production.  Its release
+note distinguishes that extraction from the frozen scientific settings.
+
+MANIFEST_SHA256.csv is an explicit allowlist.  The verifier checks every hash,
+rejects unmanifested files, validates the 4,800 unique registered keys, confirms
+the 48 summary cells and passed Gate 1 audit, and checks score-budget and exact
+cost-sandwich fields.
