@@ -38,7 +38,7 @@ brute_force_minimum_cost <- function(log_lower,
   )
 }
 
-# The older necessary condition U(S) >= (1-epsilon)L(F) accepts S={1}
+# The looser necessary condition U(S) >= (1-epsilon)L(F) accepts S={1}
 # here, but the sharp ratio lower bound is 1/(2+1), which exceeds epsilon.
 # The optimistic solver must therefore reject the one-cost subset.
 sharp_lower <- log(c(1, 1))
@@ -293,8 +293,7 @@ expect_error(
   select_certified_region_tree(
     tree = tree,
     log_score_fn = log_score_fn,
-    evidence_evaluator = function(node) NULL,
-    selection_mode = "epsilon"
+    evidence_evaluator = function(node) NULL
   ),
   "epsilon selection accepted a missing epsilon"
 )
@@ -322,10 +321,11 @@ expect_true(
 old_dp_limit <- getOption("rrs.max_dynamic_program_states")
 options(rrs.max_dynamic_program_states = 3L)
 expect_error(
-  rrs_log_benefit_frontier_generic(
+  rrs_minimum_cost_log_benefit(
     log_benefit = log(c(1, 1)),
     costs = c(2L, 2L),
-    eligible = c(TRUE, TRUE)
+    eligible = c(TRUE, TRUE),
+    log_threshold = log(1)
   ),
   "the exact cost dynamic program ignored its audited memory guard"
 )
@@ -367,7 +367,6 @@ multilevel_fit <- fit_certified_region_selection(
   pilot_mutation_steps = 1L,
   production_mutation_steps = 1L,
   maximum_relative_radius = 0.05,
-  selection_mode = "epsilon",
   epsilon = 0.20,
   cost_tolerance = 100,
   max_score_evaluations = 1000000L,

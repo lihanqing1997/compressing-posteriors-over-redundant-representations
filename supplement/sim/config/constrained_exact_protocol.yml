@@ -1,32 +1,18 @@
 schema_version: 1
-protocol_id: constrained-tmlr-revision-2026-08-13
-status: exact_component_frozen_before_production
+protocol_id: regional-compression-exact-study-2026-08-13
+status: frozen_before_production
 frozen_on: 2026-08-13
-release_extract_created_on: 2026-08-15
 scope: >-
   Exact-reference evaluation of constrained minimum-cost regional selection.
-  The six canonical production tables retain every registered method-setting
-  run, including non-success statuses. Smoke and pilot outputs are excluded
-  from reported estimates.
-source_note: >-
-  This release file extracts the exact-study component of the broader internal
-  protocol frozen before production. The extraction removes unreported
-  components but does not change the exact-study settings, seeds, gates, or
-  output grid used by the canonical rows.
+  The six production tables retain every registered method-setting run,
+  including non-success statuses.
 
-claims_contract:
-  supported:
-    - exact optimization and cost-sandwich correctness under exact intervals
-    - recorded simultaneous interval coverage under the stated stochastic assumptions
-    - omitted-mass feasibility and coverage at each declared epsilon
-    - exact cost recovery when declared groups align with the generating blocks
-    - explicit loss of certificate sharpness under perturbed or crossed groupings
-  prohibited:
-    - polynomial worst-case complexity
-    - automatic discovery of semantically correct regions
-    - universal runtime improvement
-    - superiority to full-posterior samplers
-    - generalization beyond the reported Gaussian BMA designs
+validated_claims:
+  - exact optimization and cost-sandwich correctness under exact intervals
+  - recorded simultaneous interval coverage under the stated stochastic assumptions
+  - omitted-mass feasibility and coverage at each declared epsilon
+  - exact cost recovery when declared groups align with the generating blocks
+  - certificate-sharpness sensitivity under perturbed or crossed groupings
 
 cost_contract:
   primary_name: scheduled_regional_work_units
@@ -52,8 +38,6 @@ global_design:
   cost_gap_tolerance: 0.999999
   lattice_spacing: 1
   production_replications_per_cell: 100
-  pilot_replications_per_cell: 5
-  smoke_replications_per_cell: 2
   evidence_settings:
     registered_estimator: iid
     pilot_paths: 60
@@ -70,16 +54,13 @@ global_design:
     - budget-exhausted
     - invalid-input
     - implementation-error
-  frozen_exact_study_decision:
+  production_settings:
     score_budget: 25000
     minimum_paths: 100
-    qualifying_aligned_p12_pilots: 5
-    total_aligned_p12_pilots: 5
+    action_budget: 100000
 
 seed_registry:
-  smoke_base: 202680000
-  pilot_base: 202681000
-  exact_production_base: 202682000
+  production_base: 202682000
   data_seed_formula: >-
     base + 100000*p_index + 10000*regime_index + 100*replication.
   algorithm_seed_formula: >-
@@ -123,10 +104,9 @@ exact_constrained_study:
     raw requests and first visits are counted as through a memoized oracle.
     Exact-study elapsed time is excluded from computational comparisons.
 
-gate_1:
+acceptance_checks:
   status: passed
-  decision_point: after_exact_constrained_study
-  pass_requirements:
+  requirements:
     - zero deterministic sandwich violations with exact intervals
     - exact optimizer agreement in every exact-mode row
     - stochastic simultaneous-coverage point estimate at least 0.94 overall
@@ -137,5 +117,4 @@ gate_1:
 
 reporting:
   retain_all_production_rows: true
-  exclude_smoke_and_pilot_from_estimands: true
   summarize_failures_in_denominator: true

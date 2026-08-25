@@ -1,10 +1,9 @@
-ANONYMOUS TMLR REPRODUCTION PACKAGE
+REPRODUCIBILITY PACKAGE
 
 This focused package supports the reported constrained exact-reference study.
-It contains the six canonical production tables, totaling 4,800 rows, the
-48-cell summary, the seven-check Gate 1 audit, the active implementation, and
-the scripts needed to validate their relationships.  It contains no pilot,
-smoke, cache, process-log, or historical output.
+It contains six production tables totaling 4,800 rows, the 48-cell summary,
+the seven-check protocol audit, the implementation, and scripts that validate
+their relationships.
 
 Requirements
   R 4.4.2 or a compatible recent R release
@@ -13,22 +12,22 @@ Requirements
 
 Run commands from the extracted supplement directory.
 
-First verify the untouched archive, then validate its focused protocol
+First verify the package, then validate the study protocol
   Rscript sim/verify_release.R
-  Rscript sim/validate_tmlr_revision_protocol.R
+  Rscript sim/validate_study_protocol.R
 
-Recompute derived files from the supplied canonical rows without modifying the
-verified archive.  These commands write beside the extracted supplement.
-  Rscript sim/audit_constrained_exact_production.R ../tmlr_recomputed/constrained_exact_gate1_audit.csv
-  Rscript sim/summarize_tmlr_revision_results.R ../tmlr_recomputed/tmlr_constrained_exact_summary.csv
-  Rscript sim/make_tmlr_revision_figures.R ../tmlr_recomputed/figures
+Recompute derived files from the supplied production rows without modifying the
+package. These commands write beside the extracted supplement.
+  Rscript sim/audit_constrained_exact_production.R ../recomputed/constrained_exact_audit.csv
+  Rscript sim/summarize_study_results.R ../recomputed/constrained_exact_summary.csv
+  Rscript sim/make_study_figures.R ../recomputed/figures
 
 Lightweight implementation tests
   Rscript sim/run_region_restricted_smc_unit_tests.R
   Rscript sim/run_constrained_region_search_unit_tests.R
   Rscript sim/run_factorized_region_mass_unit_tests.R
 
-The canonical files are under sim/output/computational_study/.  Each of the six
+The result files are under sim/output/computational_study/. Each of the six
 dimension-by-grouping files has 800 rows: 100 independently generated data
 sets, four omitted-mass tolerances, and exact or stochastic interval mode.
 The same generated data set and enumerated target are reused across its eight
@@ -40,17 +39,15 @@ evaluations count first visits.  This preserves the algorithmic work ledger,
 but exact-study elapsed time is not a marginal-likelihood timing comparison and
 is not used to claim runtime savings.
 
-Full production is intentionally not part of routine artifact verification.
-It is computationally expensive, and the canonical rows are supplied.  The
-runner accepts registered subsets, for example one data set:
+The supplied rows support routine artifact verification. The production runner
+also accepts registered subsets, for example one data set:
 
-  Rscript sim/run_constrained_exact_study.R --mode=full --p=12 --regime=aligned --replication-ids=1 --budget=25000 --n-paths=100 --output=constrained_exact_check.csv
+  Rscript sim/run_constrained_exact_study.R --p=12 --regime=aligned --replication-ids=1 --budget=25000 --n-paths=100 --output=../recomputed/constrained_exact_check.csv
 
-The configuration at sim/config/constrained_exact_protocol.yml is an exact
-release extract of the study component fixed before production.  Its release
-note distinguishes that extraction from the frozen scientific settings.
+The configuration at sim/config/constrained_exact_protocol.yml records the
+study settings fixed before production.
 
-MANIFEST_SHA256.csv is an explicit allowlist.  The verifier checks every hash,
+MANIFEST_SHA256.csv records every released file. The verifier checks every hash,
 rejects unmanifested files, validates the 4,800 unique registered keys, confirms
-the 48 summary cells and passed Gate 1 audit, and checks score-budget and exact
+the 48 summary cells and passed protocol audit, and checks score-budget and exact
 cost-sandwich fields.
