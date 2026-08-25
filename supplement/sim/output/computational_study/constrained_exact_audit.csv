@@ -1,0 +1,8 @@
+"check","value","required","comparison","passed"
+"expected_rows",4800,4800,"equal",TRUE
+"deterministic_exactness_and_sandwich",1,1,"equal",TRUE
+"stochastic_simultaneous_coverage_rate",0.9975,0.94,"at_least",TRUE
+"aligned_finite_incumbent_rate_epsilon_0.10",1,0.8,"at_least",TRUE
+"perturbed_finite_incumbent_rate_epsilon_0.10",1,0.6,"at_least",TRUE
+"budget_overshoots",0,0,"equal",TRUE
+"implementation_errors",0,0,"equal",TRUE

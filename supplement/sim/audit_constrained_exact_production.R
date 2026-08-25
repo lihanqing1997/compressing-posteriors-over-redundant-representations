@@ -4,8 +4,8 @@ audit_path <- if (length(arguments)) {
   arguments[[1L]]
 } else {
   file.path(
-    "sim", "output", "computational_study",
-    "constrained_exact_gate1_audit.csv"
+    "..", "recomputed",
+    "constrained_exact_audit.csv"
   )
 }
 if (!requireNamespace("yaml", quietly = TRUE)) {
@@ -52,7 +52,7 @@ if (nrow(rows) != expected_rows) {
 key <- with(rows, paste(p, regime, replication, epsilon, interval_mode, sep = "/"))
 if (anyDuplicated(key)) stop("Registered production keys are duplicated.", call. = FALSE)
 if (any(!rows$registered_production)) stop("A production row is not registered.", call. = FALSE)
-if (any(rows$score_budget != protocol$global_design$frozen_exact_study_decision$score_budget)) {
+if (any(rows$score_budget != protocol$global_design$production_settings$score_budget)) {
   stop("A production row used the wrong score budget.", call. = FALSE)
 }
 if (any(rows$budget_overshoot > 0, na.rm = TRUE)) {
@@ -133,9 +133,9 @@ dir.create(dirname(audit_path), recursive = TRUE, showWarnings = FALSE)
 write.csv(summary, audit_path, row.names = FALSE)
 if (!all(summary$passed)) {
   failed <- summary$check[!summary$passed]
-  stop(paste("Gate 1 failed:", paste(failed, collapse = ", ")), call. = FALSE)
+  stop(paste("Protocol audit failed:", paste(failed, collapse = ", ")), call. = FALSE)
 }
 cat(sprintf(
-  "Gate 1 passed for %d registered rows; wrote %s.\n",
+  "Protocol audit passed for %d registered rows; wrote %s.\n",
   nrow(rows), audit_path
 ))

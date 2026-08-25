@@ -7,7 +7,7 @@ arguments <- commandArgs(trailingOnly = TRUE)
 summary_path <- if (length(arguments)) {
   arguments[[1L]]
 } else {
-  file.path(output_directory, "tmlr_constrained_exact_summary.csv")
+  file.path("..", "recomputed", "constrained_exact_summary.csv")
 }
 
 mean_or_na <- function(x) if (length(x) && any(is.finite(x))) mean(x[is.finite(x)]) else NA_real_
@@ -37,7 +37,7 @@ exact_paths <- unlist(lapply(c(12L, 16L), function(p) {
 missing_exact_paths <- exact_paths[!file.exists(exact_paths)]
 if (length(missing_exact_paths)) {
   stop(
-    paste("Missing canonical exact-study files:",
+    paste("Missing exact-study result files:",
           paste(missing_exact_paths, collapse = ", ")),
     call. = FALSE
   )

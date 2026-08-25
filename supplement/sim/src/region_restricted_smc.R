@@ -711,26 +711,9 @@ region_annealed_smc <- function(region,
   )
 }
 
-regional_particle_requirement <- function(rho, relative_error, n_regions, delta) {
-  if (rho < 0 ||
-      !(relative_error > 0 && relative_error < 1) ||
-      n_regions < 1 ||
-      !(delta > 0 && delta < 1)) {
-    stop("Invalid concentration-bound inputs.", call. = FALSE)
-  }
-  if (rho == 0) {
-    return(1L)
-  }
-  ceiling(
-    ((exp(rho) - 1)^2 / (2 * relative_error^2)) *
-      log(2 * n_regions / delta)
-  )
-}
-
 # Budget preflight for one node with its own predictable failure allocation.
 # This is the direct inversion of the adaptive evidence radius used in the
-# manuscript.  `regional_particle_requirement()` above is retained for the
-# older equal-allocation interface used by the released penalized experiments.
+# manuscript.
 regional_evidence_preflight <- function(rho,
                                         relative_error,
                                         delta_node,
@@ -766,65 +749,6 @@ regional_evidence_preflight <- function(rho,
     relative_error = relative_error,
     delta_node = delta_node,
     rho = rho
-  )
-}
-
-region_evidence_frontier <- function(log_evidence, costs) {
-  log_evidence <- as.numeric(log_evidence)
-  raw_costs <- as.numeric(costs)
-  if (length(log_evidence) != length(raw_costs) ||
-      length(raw_costs) < 1L ||
-      any(!is.finite(log_evidence)) ||
-      any(!is.finite(raw_costs)) ||
-      any(raw_costs < 1) ||
-      any(abs(raw_costs - round(raw_costs)) > sqrt(.Machine$double.eps))) {
-    stop(
-      "log_evidence and positive integer costs must have the same nonzero length.",
-      call. = FALSE
-    )
-  }
-  costs <- as.integer(round(raw_costs))
-
-  offset <- max(log_evidence)
-  evidence <- exp(log_evidence - offset)
-  if (length(unique(costs)) == 1L) {
-    order_by_evidence <- order(evidence, decreasing = TRUE)
-    cumulative <- cumsum(evidence[order_by_evidence])
-    common_cost <- costs[1L]
-    return(data.frame(
-      budget = seq_along(cumulative) * common_cost,
-      log_evidence = log(cumulative) + offset,
-      selected = I(lapply(
-        seq_along(cumulative),
-        function(k) order_by_evidence[seq_len(k)]
-      ))
-    ))
-  }
-  max_budget <- sum(costs)
-  best <- rep(-Inf, max_budget + 1L)
-  selected <- vector("list", max_budget + 1L)
-  best[1] <- 0
-  selected[[1]] <- integer(0)
-
-  for (j in seq_along(costs)) {
-    for (budget in seq.int(max_budget, costs[j], by = -1L)) {
-      previous <- budget - costs[j]
-      if (!is.finite(best[previous + 1L])) {
-        next
-      }
-      candidate <- best[previous + 1L] + evidence[j]
-      if (candidate > best[budget + 1L]) {
-        best[budget + 1L] <- candidate
-        selected[[budget + 1L]] <- c(selected[[previous + 1L]], j)
-      }
-    }
-  }
-
-  feasible <- which(is.finite(best) & best > 0) - 1L
-  data.frame(
-    budget = feasible,
-    log_evidence = log(best[feasible + 1L]) + offset,
-    selected = I(selected[feasible + 1L])
   )
 }
 
@@ -1001,228 +925,6 @@ rrs_interval_epsilon_feasible <- function(interval_summary,
     log_right <- -Inf
   }
   log_left <= log_right
-}
-
-rrs_cumulative_log_sum_exp <- function(x) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) {
-    return(numeric(0))
-  }
-  out <- numeric(length(x))
-  running <- -Inf
-  for (j in seq_along(x)) {
-    running <- rrs_log_sum_exp(c(running, x[j]))
-    out[j] <- running
-  }
-  out
-}
-
-rrs_strict_log_improvement <- function(candidate, incumbent) {
-  if (is.infinite(incumbent) && incumbent < 0) {
-    return(is.finite(candidate))
-  }
-  tolerance <- 16 * .Machine$double.eps * max(
-    1,
-    abs(candidate),
-    abs(incumbent)
-  )
-  candidate > incumbent + tolerance
-}
-
-rrs_log_benefit_frontier_generic <- function(log_benefit,
-                                              costs,
-                                              eligible) {
-  eligible_ids <- which(eligible)
-  if (length(eligible_ids) == 0L) {
-    return(list(
-      budget = integer(0),
-      log_benefit = numeric(0),
-      selected = list()
-    ))
-  }
-  max_budget <- sum(costs[eligible_ids])
-  state_limit <- getOption("rrs.max_dynamic_program_states", 5000000L)
-  if (length(state_limit) != 1L || !is.finite(state_limit) ||
-      state_limit < 2 || state_limit != round(state_limit)) {
-    stop("rrs.max_dynamic_program_states must be an integer of at least two.", call. = FALSE)
-  }
-  if (max_budget + 1 > state_limit) {
-    stop(
-      paste0(
-        "The exact cost dynamic program needs ", max_budget + 1,
-        " states, exceeding rrs.max_dynamic_program_states=", state_limit,
-        ". Rescale the declared integer costs or raise the audited limit."
-      ),
-      call. = FALSE
-    )
-  }
-  reachable <- rep(FALSE, max_budget + 1L)
-  best <- rep(-Inf, max_budget + 1L)
-  selected <- vector("list", max_budget + 1L)
-  reachable[1L] <- TRUE
-  selected[[1L]] <- integer(0)
-
-  for (j in eligible_ids) {
-    for (budget in seq.int(max_budget, costs[j], by = -1L)) {
-      previous <- budget - costs[j]
-      if (!reachable[previous + 1L]) {
-        next
-      }
-      candidate <- rrs_log_sum_exp(c(
-        best[previous + 1L],
-        log_benefit[j]
-      ))
-      if (!reachable[budget + 1L] ||
-          rrs_strict_log_improvement(candidate, best[budget + 1L])) {
-        reachable[budget + 1L] <- TRUE
-        best[budget + 1L] <- candidate
-        selected[[budget + 1L]] <- c(selected[[previous + 1L]], j)
-      }
-    }
-  }
-  reachable_budget <- which(reachable)[-1L] - 1L
-  list(
-    budget = reachable_budget,
-    log_benefit = best[reachable_budget + 1L],
-    selected = selected[reachable_budget + 1L]
-  )
-}
-
-rrs_log_benefit_frontier_equal_cost <- function(log_benefit,
-                                                 costs,
-                                                 eligible,
-                                                 ranked_ids = NULL) {
-  eligible_ids <- which(eligible)
-  if (length(eligible_ids) == 0L) {
-    return(list(
-      budget = integer(0),
-      log_benefit = numeric(0),
-      selected = list()
-    ))
-  }
-  common_cost <- costs[eligible_ids[1L]]
-  if (any(costs[eligible_ids] != common_cost)) {
-    stop("The equal-cost frontier received unequal eligible costs.", call. = FALSE)
-  }
-  if (is.null(ranked_ids)) {
-    ranked_ids <- eligible_ids[order(
-      -log_benefit[eligible_ids],
-      eligible_ids,
-      method = "radix"
-    )]
-  }
-  selected <- vector("list", length(ranked_ids))
-  running_ids <- integer(0)
-  for (k in seq_along(ranked_ids)) {
-    insertion <- findInterval(ranked_ids[k], running_ids)
-    running_ids <- append(running_ids, ranked_ids[k], after = insertion)
-    selected[[k]] <- running_ids
-  }
-  list(
-    budget = as.integer(seq_along(ranked_ids) * common_cost),
-    log_benefit = rrs_cumulative_log_sum_exp(log_benefit[ranked_ids]),
-    selected = selected
-  )
-}
-
-rrs_log_benefit_frontier <- function(log_benefit, costs, eligible) {
-  eligible_ids <- which(eligible)
-  if (length(eligible_ids) > 0L &&
-      length(unique(costs[eligible_ids])) == 1L) {
-    return(rrs_log_benefit_frontier_equal_cost(
-      log_benefit = log_benefit,
-      costs = costs,
-      eligible = eligible
-    ))
-  }
-  rrs_log_benefit_frontier_generic(
-    log_benefit = log_benefit,
-    costs = costs,
-    eligible = eligible
-  )
-}
-
-region_interval_evidence_frontier <- function(
-    log_evidence_lower,
-    costs,
-    epsilon,
-    log_evidence_upper = log_evidence_lower,
-    mode = c("conservative", "optimistic"),
-    eligible = NULL) {
-  mode <- match.arg(mode)
-  inputs <- rrs_validate_interval_frontier_inputs(
-    log_evidence_lower = log_evidence_lower,
-    log_evidence_upper = log_evidence_upper,
-    costs = costs,
-    epsilon = epsilon,
-    eligible = eligible
-  )
-  log_lower <- inputs$log_lower
-  log_upper <- inputs$log_upper
-  epsilon <- inputs$epsilon
-  retain_weight <- 1 - epsilon
-  log_benefit <- vapply(seq_along(log_lower), function(j) {
-    if (identical(mode, "conservative")) {
-      rrs_log_weighted_pair(
-        log_upper[j], retain_weight,
-        log_lower[j], epsilon
-      )
-    } else {
-      rrs_log_weighted_pair(
-        log_lower[j], retain_weight,
-        log_upper[j], epsilon
-      )
-    }
-  }, numeric(1))
-  benefit_frontier <- rrs_log_benefit_frontier(
-    log_benefit = log_benefit,
-    costs = inputs$costs,
-    eligible = inputs$eligible
-  )
-  if (length(benefit_frontier$budget) == 0L) {
-    return(data.frame(
-      budget = integer(0),
-      log_benefit = numeric(0),
-      log_evidence_lower = numeric(0),
-      log_evidence_upper = numeric(0),
-      omitted_mass_lower = numeric(0),
-      omitted_mass_upper = numeric(0),
-      feasible = logical(0),
-      selected = I(list())
-    ))
-  }
-
-  interval_summaries <- lapply(
-    benefit_frontier$selected,
-    function(selected) {
-      rrs_interval_omitted_mass(log_lower, log_upper, selected)
-    }
-  )
-  omitted_lower <- vapply(interval_summaries, `[[`, numeric(1), "lower")
-  omitted_upper <- vapply(interval_summaries, `[[`, numeric(1), "upper")
-  feasible <- vapply(interval_summaries, function(summary) {
-    rrs_interval_epsilon_feasible(summary, epsilon, mode)
-  }, logical(1))
-  data.frame(
-    budget = benefit_frontier$budget,
-    log_benefit = benefit_frontier$log_benefit,
-    log_evidence_lower = vapply(
-      interval_summaries,
-      `[[`,
-      numeric(1),
-      "log_lower_selected"
-    ),
-    log_evidence_upper = vapply(
-      interval_summaries,
-      `[[`,
-      numeric(1),
-      "log_upper_selected"
-    ),
-    omitted_mass_lower = omitted_lower,
-    omitted_mass_upper = omitted_upper,
-    feasible = feasible,
-    selected = I(benefit_frontier$selected)
-  )
 }
 
 rrs_minimum_cost_log_benefit <- function(log_benefit,
@@ -1462,99 +1164,6 @@ select_region_union_epsilon <- function(
     epsilon = inputs$epsilon,
     mode = mode,
     frontier = NULL
-  )
-}
-
-select_region_union <- function(log_evidence, costs, lambda) {
-  if (length(lambda) != 1L || !is.finite(lambda) || lambda <= 0) {
-    stop("lambda must be one positive finite number.", call. = FALSE)
-  }
-  frontier <- region_evidence_frontier(log_evidence, costs)
-  frontier$objective <- -frontier$log_evidence + lambda * frontier$budget
-  optimum <- which.min(frontier$objective)
-  list(
-    selected = frontier$selected[[optimum]],
-    budget = frontier$budget[optimum],
-    log_evidence = frontier$log_evidence[optimum],
-    objective = frontier$objective[optimum],
-    frontier = frontier
-  )
-}
-
-regional_omitted_mass_bound <- function(log_evidence,
-                                        selected,
-                                        log_error_bound) {
-  log_evidence <- as.numeric(log_evidence)
-  selected <- sort(unique(as.integer(selected)))
-  if (length(selected) < 1L ||
-      any(selected < 1L) ||
-      any(selected > length(log_evidence)) ||
-      any(!is.finite(log_evidence)) ||
-      length(log_error_bound) != 1L ||
-      !is.finite(log_error_bound) ||
-      log_error_bound < 0) {
-    stop("Invalid omitted-mass-bound inputs.", call. = FALSE)
-  }
-  complement <- setdiff(seq_along(log_evidence), selected)
-  if (length(complement) == 0L) {
-    return(0)
-  }
-  log_selected <- rrs_log_sum_exp(log_evidence[selected])
-  log_complement <- rrs_log_sum_exp(log_evidence[complement])
-  log_numerator <- log_error_bound + log_complement
-  log_denominator <- rrs_log_sum_exp(c(
-    -log_error_bound + log_selected,
-    log_error_bound + log_complement
-  ))
-  exp(log_numerator - log_denominator)
-}
-
-fit_region_restricted_smc <- function(regions,
-                                      log_score_fn,
-                                      lambda,
-                                      log_error_bound = NULL,
-                                      ...) {
-  if (length(regions) < 1L) {
-    stop("At least one region is required.", call. = FALSE)
-  }
-  fits <- lapply(
-    regions,
-    region_annealed_smc,
-    log_score_fn = log_score_fn,
-    ...
-  )
-  log_evidence <- vapply(fits, `[[`, numeric(1), "log_evidence")
-  costs <- vapply(regions, `[[`, numeric(1), "cost")
-  selection <- select_region_union(log_evidence, costs, lambda)
-  regional_weights <- exp(
-    log_evidence[selection$selected] -
-      rrs_log_sum_exp(log_evidence[selection$selected])
-  )
-  omitted_bound <- if (is.null(log_error_bound)) {
-    NA_real_
-  } else {
-    regional_omitted_mass_bound(
-      log_evidence,
-      selection$selected,
-      log_error_bound
-    )
-  }
-
-  list(
-    selected = selection$selected,
-    selected_labels = vapply(
-      regions[selection$selected],
-      `[[`,
-      character(1),
-      "label"
-    ),
-    regional_weights = regional_weights,
-    omitted_mass_bound = omitted_bound,
-    selection = selection,
-    region_fits = fits,
-    total_score_evaluations = sum(
-      vapply(fits, `[[`, numeric(1), "score_evaluations")
-    )
   )
 }
 
@@ -2025,97 +1634,6 @@ rrs_bound_tree_node <- function(node, log_score_fn) {
   node
 }
 
-rrs_log_omitted_mass_bound <- function(log_selected_lower,
-                                       log_omitted_upper) {
-  if (length(log_selected_lower) != 1L ||
-      length(log_omitted_upper) != 1L) {
-    stop("Omitted-mass inputs must be scalar.", call. = FALSE)
-  }
-  if (is.infinite(log_omitted_upper) && log_omitted_upper < 0) {
-    return(0)
-  }
-  if (is.infinite(log_selected_lower) && log_selected_lower < 0) {
-    return(1)
-  }
-  if (!is.finite(log_selected_lower) || !is.finite(log_omitted_upper)) {
-    stop("Omitted-mass log bounds must be finite or negative infinity.", call. = FALSE)
-  }
-  exp(
-    log_omitted_upper -
-      rrs_log_sum_exp(c(log_selected_lower, log_omitted_upper))
-  )
-}
-
-rrs_tree_search_state <- function(nodes, frontier_ids, lambda) {
-  frontier <- nodes[frontier_ids]
-  log_upper <- vapply(frontier, `[[`, numeric(1), "log_upper")
-  costs_lower <- vapply(frontier, `[[`, numeric(1), "cost_lower")
-  if (any(!is.finite(log_upper))) {
-    stop("Every frontier node needs a finite evidence upper bound.", call. = FALSE)
-  }
-  optimistic <- select_region_union(log_upper, costs_lower, lambda)
-  optimistic_ids <- frontier_ids[optimistic$selected]
-
-  evaluated <- vapply(frontier, `[[`, logical(1), "evaluated")
-  evaluated_ids <- frontier_ids[evaluated]
-  incumbent <- NULL
-  selected_ids <- character(0)
-  if (length(evaluated_ids) > 0L) {
-    evaluated_nodes <- nodes[evaluated_ids]
-    log_lower <- vapply(evaluated_nodes, `[[`, numeric(1), "log_lower")
-    finite_lower <- is.finite(log_lower)
-    evaluated_ids <- evaluated_ids[finite_lower]
-    evaluated_nodes <- evaluated_nodes[finite_lower]
-    log_lower <- log_lower[finite_lower]
-    if (length(evaluated_ids) > 0L) {
-      incumbent <- select_region_union(
-        log_lower,
-        vapply(evaluated_nodes, function(node) node$region$cost, numeric(1)),
-        lambda
-      )
-      selected_ids <- evaluated_ids[incumbent$selected]
-    }
-  }
-
-  objective_gap <- if (is.null(incumbent)) {
-    Inf
-  } else {
-    max(0, incumbent$objective - optimistic$objective)
-  }
-  omitted_ids <- setdiff(frontier_ids, selected_ids)
-  log_selected_lower <- if (length(selected_ids) > 0L) {
-    rrs_log_sum_exp(vapply(
-      nodes[selected_ids],
-      `[[`,
-      numeric(1),
-      "log_lower"
-    ))
-  } else {
-    -Inf
-  }
-  log_omitted_upper <- if (length(omitted_ids) > 0L) {
-    rrs_log_sum_exp(vapply(
-      nodes[omitted_ids],
-      `[[`,
-      numeric(1),
-      "log_upper"
-    ))
-  } else {
-    -Inf
-  }
-  list(
-    optimistic = optimistic,
-    optimistic_ids = optimistic_ids,
-    incumbent = incumbent,
-    selected_ids = selected_ids,
-    objective_gap = objective_gap,
-    omitted_mass_bound = rrs_log_omitted_mass_bound(
-      log_selected_lower,
-      log_omitted_upper
-    )
-  )
-}
-
 rrs_tree_epsilon_search_state <- function(nodes, frontier_ids, epsilon) {
   if (!is.list(nodes) ||
       is.null(names(nodes)) ||
@@ -2337,50 +1855,34 @@ make_iid_bounded_evidence_evaluator <- function(log_score_fn,
 certified_tree_region_search <- function(tree,
                                          log_score_fn,
                                          evidence_evaluator,
-                                         lambda = NULL,
-                                         objective_tolerance = 0.05,
-                                         omitted_mass_tolerance = 0.05,
+                                         epsilon,
+                                         cost_tolerance = 0,
                                          max_score_evaluations = Inf,
-                                         max_actions = Inf,
-                                         selection_mode = c(
-                                           "penalized",
-                                           "epsilon"
-                                         ),
-                                         epsilon = NULL,
-                                         cost_tolerance = 0) {
-  selection_mode <- match.arg(selection_mode)
+                                         max_actions = Inf) {
   if (!inherits(tree, "rrs_region_tree")) {
     stop("tree must be created by new_region_tree.", call. = FALSE)
   }
   if (!is.function(evidence_evaluator) || !is.function(log_score_fn)) {
     stop("Score and evidence evaluators must be functions.", call. = FALSE)
   }
-  if (!(objective_tolerance >= 0) ||
-      !(omitted_mass_tolerance >= 0 && omitted_mass_tolerance < 1) ||
-      !(max_score_evaluations > 0) ||
+  if (!(max_score_evaluations > 0) ||
       !(max_actions > 0)) {
     stop("Invalid certified-search tolerances or budgets.", call. = FALSE)
   }
-  if (identical(selection_mode, "penalized")) {
-    if (length(lambda) != 1L || !is.finite(lambda) || lambda <= 0) {
-      stop("lambda must be one positive finite number.", call. = FALSE)
-    }
-  } else {
-    if (length(epsilon) != 1L ||
-        !is.finite(epsilon) ||
-        epsilon < 0 ||
-        epsilon >= 1 ||
-        length(cost_tolerance) != 1L ||
-        !is.finite(cost_tolerance) ||
-        cost_tolerance < 0) {
-      stop(
-        paste0(
-          "Epsilon search requires epsilon in [0, 1) and ",
-          "nonnegative cost_tolerance."
-        ),
-        call. = FALSE
-      )
-    }
+  if (length(epsilon) != 1L ||
+      !is.finite(epsilon) ||
+      epsilon < 0 ||
+      epsilon >= 1 ||
+      length(cost_tolerance) != 1L ||
+      !is.finite(cost_tolerance) ||
+      cost_tolerance < 0) {
+    stop(
+      paste0(
+        "Constrained search requires epsilon in [0, 1) and ",
+        "nonnegative cost_tolerance."
+      ),
+      call. = FALSE
+    )
   }
 
   nodes <- tree$nodes
@@ -2397,11 +1899,7 @@ certified_tree_region_search <- function(tree,
   conflict_node_id <- NA_character_
 
   repeat {
-    state <- if (identical(selection_mode, "penalized")) {
-      rrs_tree_search_state(nodes, frontier_ids, lambda)
-    } else {
-      rrs_tree_epsilon_search_state(nodes, frontier_ids, epsilon)
-    }
+    state <- rrs_tree_epsilon_search_state(nodes, frontier_ids, epsilon)
     common_trace <- list(
       action = actions,
       frontier_size = length(frontier_ids),
@@ -2412,40 +1910,18 @@ certified_tree_region_search <- function(tree,
         "evaluated"
       ))
     )
-    trace[[length(trace) + 1L]] <- if (
-        identical(selection_mode, "penalized")) {
-      data.frame(
-        common_trace,
-        objective_lower = state$optimistic$objective,
-        objective_upper = if (is.null(state$incumbent)) {
-          Inf
-        } else {
-          state$incumbent$objective
-        },
-        objective_gap = state$objective_gap,
-        omitted_mass_bound = state$omitted_mass_bound,
-        score_evaluations = score_evaluations
-      )
-    } else {
-      data.frame(
-        common_trace,
-        cost_lower = state$cost_lower,
-        cost_upper = state$cost_upper,
-        cost_gap = state$cost_gap,
-        omitted_mass_bound = state$omitted_mass_bound,
-        score_evaluations = score_evaluations
-      )
-    }
-    bounds_met <- if (identical(selection_mode, "penalized")) {
-      is.finite(state$objective_gap) &&
-        state$objective_gap <= objective_tolerance &&
-        state$omitted_mass_bound <= omitted_mass_tolerance
-    } else {
-      isTRUE(state$incumbent$feasible) &&
-        state$omitted_mass_bound <= epsilon &&
-        is.finite(state$cost_gap) &&
-        state$cost_gap <= cost_tolerance
-    }
+    trace[[length(trace) + 1L]] <- data.frame(
+      common_trace,
+      cost_lower = state$cost_lower,
+      cost_upper = state$cost_upper,
+      cost_gap = state$cost_gap,
+      omitted_mass_bound = state$omitted_mass_bound,
+      score_evaluations = score_evaluations
+    )
+    bounds_met <- isTRUE(state$incumbent$feasible) &&
+      state$omitted_mass_bound <= epsilon &&
+      is.finite(state$cost_gap) &&
+      state$cost_gap <= cost_tolerance
     if (bounds_met) {
       status <- "certified"
       break
@@ -2479,13 +1955,7 @@ certified_tree_region_search <- function(tree,
     candidates <- if (length(preferred) > 0L) preferred else unresolved_ids
     priorities <- vapply(
       nodes[candidates],
-      function(node) {
-        if (identical(selection_mode, "penalized")) {
-          node$log_upper - lambda * node$cost_lower
-        } else {
-          node$log_upper - log(node$cost_lower)
-        }
-      },
+      function(node) node$log_upper - log(node$cost_lower),
       numeric(1)
     )
     node_id <- candidates[which.max(priorities)]
@@ -2628,18 +2098,13 @@ certified_tree_region_search <- function(tree,
     actions <- actions + 1L
   }
 
-  final_state <- if (identical(selection_mode, "penalized")) {
-    rrs_tree_search_state(nodes, frontier_ids, lambda)
-  } else {
-    rrs_tree_epsilon_search_state(nodes, frontier_ids, epsilon)
-  }
+  final_state <- rrs_tree_epsilon_search_state(nodes, frontier_ids, epsilon)
   budget_overshoot <- if (is.finite(max_score_evaluations)) {
     max(0, score_evaluations - max_score_evaluations)
   } else {
     0
   }
-  epsilon_feasible <- identical(selection_mode, "epsilon") &&
-    isTRUE(final_state$incumbent$feasible) &&
+  epsilon_feasible <- isTRUE(final_state$incumbent$feasible) &&
     final_state$omitted_mass_bound <= epsilon
   cost_optimality_met <- isTRUE(epsilon_feasible) &&
     is.finite(final_state$cost_gap) &&
@@ -2651,39 +2116,13 @@ certified_tree_region_search <- function(tree,
     bounds_met = identical(status, "certified"),
     epsilon_feasible = isTRUE(epsilon_feasible),
     cost_optimality_met = isTRUE(cost_optimality_met),
-    selection_mode = selection_mode,
-    epsilon = if (identical(selection_mode, "epsilon")) epsilon else NA_real_,
+    epsilon = epsilon,
     selected_ids = final_state$selected_ids,
-    objective_gap = if (identical(selection_mode, "penalized")) {
-      final_state$objective_gap
-    } else {
-      NA_real_
-    },
-    cost_lower = if (identical(selection_mode, "epsilon")) {
-      final_state$cost_lower
-    } else {
-      NA_real_
-    },
-    cost_upper = if (identical(selection_mode, "epsilon")) {
-      final_state$cost_upper
-    } else {
-      NA_real_
-    },
-    cost_gap = if (identical(selection_mode, "epsilon")) {
-      final_state$cost_gap
-    } else {
-      NA_real_
-    },
-    bracket_consistent = if (identical(selection_mode, "epsilon")) {
-      final_state$bracket_consistent
-    } else {
-      NA
-    },
-    cost_tolerance = if (identical(selection_mode, "epsilon")) {
-      cost_tolerance
-    } else {
-      NA_real_
-    },
+    cost_lower = final_state$cost_lower,
+    cost_upper = final_state$cost_upper,
+    cost_gap = final_state$cost_gap,
+    bracket_consistent = final_state$bracket_consistent,
+    cost_tolerance = cost_tolerance,
     omitted_mass_bound = final_state$omitted_mass_bound,
     frontier_ids = frontier_ids,
     nodes = nodes,
@@ -2714,7 +2153,6 @@ select_minimum_cost_region_tree <- function(tree,
     tree = tree,
     log_score_fn = log_score_fn,
     evidence_evaluator = evidence_evaluator,
-    selection_mode = "epsilon",
     epsilon = epsilon,
     cost_tolerance = cost_tolerance,
     ...
@@ -2723,7 +2161,8 @@ select_minimum_cost_region_tree <- function(tree,
 
 fit_certified_region_selection <- function(tree,
                                            log_score_fn,
-                                           lambda = NULL,
+                                           epsilon,
+                                           cost_tolerance = 0,
                                            delta = 0.05,
                                            n_pilot = 250L,
                                            n_paths = 1000L,
@@ -2734,17 +2173,8 @@ fit_certified_region_selection <- function(tree,
                                            maximum_relative_radius = NULL,
                                            maximum_paths = NULL,
                                            evidence_method = c("ais", "iid"),
-                                           objective_tolerance = 0.05,
-                                           omitted_mass_tolerance = 0.05,
                                            max_score_evaluations = Inf,
-                                           max_actions = Inf,
-                                           selection_mode = c(
-                                             "penalized",
-                                             "epsilon"
-                                           ),
-                                           epsilon = NULL,
-                                           cost_tolerance = 0) {
-  selection_mode <- match.arg(selection_mode)
+                                           max_actions = Inf) {
   evidence_method <- match.arg(evidence_method)
   evaluator <- if (evidence_method == "iid") {
     make_iid_bounded_evidence_evaluator(
@@ -2774,12 +2204,8 @@ fit_certified_region_selection <- function(tree,
     tree = tree,
     log_score_fn = log_score_fn,
     evidence_evaluator = evaluator,
-    lambda = lambda,
-    objective_tolerance = objective_tolerance,
-    omitted_mass_tolerance = omitted_mass_tolerance,
     max_score_evaluations = max_score_evaluations,
     max_actions = max_actions,
-    selection_mode = selection_mode,
     epsilon = epsilon,
     cost_tolerance = cost_tolerance
   )
@@ -2855,7 +2281,8 @@ approximate_selected_region_tree <- function(search,
 
 fit_certified_region_tree <- function(tree,
                                       log_score_fn,
-                                      lambda = NULL,
+                                      epsilon,
+                                      cost_tolerance = 0,
                                       delta = 0.05,
                                       n_pilot = 250L,
                                       n_paths = 1000L,
@@ -2868,22 +2295,14 @@ fit_certified_region_tree <- function(tree,
                                       maximum_paths = NULL,
                                       evidence_method = c("ais", "iid"),
                                       local_mutation_steps = 2L,
-                                      objective_tolerance = 0.05,
-                                      omitted_mass_tolerance = 0.05,
                                       max_score_evaluations = Inf,
-                                      max_actions = Inf,
-                                      selection_mode = c(
-                                        "penalized",
-                                        "epsilon"
-                                      ),
-                                      epsilon = NULL,
-                                      cost_tolerance = 0) {
-  selection_mode <- match.arg(selection_mode)
+                                      max_actions = Inf) {
   evidence_method <- match.arg(evidence_method)
   search <- fit_certified_region_selection(
     tree = tree,
     log_score_fn = log_score_fn,
-    lambda = lambda,
+    epsilon = epsilon,
+    cost_tolerance = cost_tolerance,
     delta = delta,
     n_pilot = n_pilot,
     n_paths = n_paths,
@@ -2894,13 +2313,8 @@ fit_certified_region_tree <- function(tree,
     maximum_relative_radius = maximum_relative_radius,
     maximum_paths = maximum_paths,
     evidence_method = evidence_method,
-    objective_tolerance = objective_tolerance,
-    omitted_mass_tolerance = omitted_mass_tolerance,
     max_score_evaluations = max_score_evaluations,
-    max_actions = max_actions,
-    selection_mode = selection_mode,
-    epsilon = epsilon,
-    cost_tolerance = cost_tolerance
+    max_actions = max_actions
   )
   downstream <- approximate_selected_region_tree(
     search = search,
@@ -2919,13 +2333,11 @@ fit_certified_region_tree <- function(tree,
     regional_weights = downstream$regional_weights,
     local_fits = downstream$local_fits,
     omitted_mass_bound = search$omitted_mass_bound,
-    objective_gap = search$objective_gap,
     cost_lower = search$cost_lower,
     cost_upper = search$cost_upper,
     cost_gap = search$cost_gap,
     bracket_consistent = search$bracket_consistent,
     bounds_met = search$bounds_met,
-    selection_mode = search$selection_mode,
     epsilon = search$epsilon,
     certified = search$certified,
     budget_overshoot = search$budget_overshoot,

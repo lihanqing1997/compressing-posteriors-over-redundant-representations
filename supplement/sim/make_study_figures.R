@@ -1,11 +1,11 @@
 arguments <- commandArgs(trailingOnly = TRUE)
-figure_directory <- if (length(arguments)) arguments[[1L]] else file.path("..", "figures")
+figure_directory <- if (length(arguments)) arguments[[1L]] else file.path("..", "recomputed", "figures")
 output_directory <- file.path("sim", "output", "computational_study")
 dir.create(figure_directory, recursive = TRUE, showWarnings = FALSE)
 
 read_required <- function(name, columns) {
   path <- file.path(output_directory, name)
-  if (!file.exists(path)) stop("Missing canonical result: ", path, call. = FALSE)
+  if (!file.exists(path)) stop("Missing study result: ", path, call. = FALSE)
   rows <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
   missing <- setdiff(columns, names(rows))
   if (length(missing)) {
@@ -15,9 +15,9 @@ read_required <- function(name, columns) {
 }
 
 open_pdf <- function(name, width, height) {
-  grDevices::pdf(
-    file.path(figure_directory, name), width = width, height = height,
-    family = "Helvetica", useDingbats = FALSE, onefile = TRUE
+  grDevices::cairo_pdf(
+    filename = file.path(figure_directory, name), width = width, height = height,
+    family = "sans", onefile = TRUE
   )
 }
 
@@ -25,9 +25,9 @@ regime_label <- c(
   aligned = "Aligned", perturbed = "Perturbed", crossed = "Crossed"
 )
 
-# Exact optimum and stochastic-mode certified bracket from the saved summary.
+# Exact optimum and reported stochastic-evidence bounds from the saved summary.
 exact <- read_required(
-  "tmlr_constrained_exact_summary.csv",
+  "constrained_exact_summary.csv",
   c(
     "p", "regime", "epsilon", "interval_mode", "replications",
     "finite_incumbent_rate", "mean_exact_optimal_cost",
@@ -78,7 +78,7 @@ for (p_value in c(12L, 16L)) {
     if (p_value == 12L && regime == "aligned") {
       legend(
         "bottomleft", bty = "n", cex = 0.66,
-        legend = c("Exact optimum", "Certified lower", "Certified upper"),
+        legend = c("Exact optimum", "Reported lower", "Reported upper"),
         col = c("#202020", "#2B6CB0", "#C53030"),
         pch = c(16, 1, 2), lwd = 1.3
       )
@@ -86,7 +86,7 @@ for (p_value in c(12L, 16L)) {
   }
 }
 mtext("Omitted-mass tolerance", side = 1, outer = TRUE, line = 0.7)
-mtext("Mean declared cost (log scale)", side = 2, outer = TRUE, line = 0.7)
+mtext("Mean selection cost (log scale)", side = 2, outer = TRUE, line = 0.7)
 par(old)
 dev.off()
 

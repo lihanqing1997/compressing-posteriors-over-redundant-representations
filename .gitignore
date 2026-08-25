@@ -7,4 +7,4 @@
 *.aux
 *.out
 *.synctex.gz
-tmlr_recomputed/
+recomputed/

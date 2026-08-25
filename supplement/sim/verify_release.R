@@ -204,9 +204,9 @@ expected_manifest_paths <- c(
   "sim/run_constrained_exact_study.R",
   "sim/merge_constrained_exact_chunks.R",
   "sim/audit_constrained_exact_production.R",
-  "sim/summarize_tmlr_revision_results.R",
-  "sim/make_tmlr_revision_figures.R",
-  "sim/validate_tmlr_revision_protocol.R",
+  "sim/summarize_study_results.R",
+  "sim/make_study_figures.R",
+  "sim/validate_study_protocol.R",
   "sim/verify_release.R",
   "sim/run_region_restricted_smc_unit_tests.R",
   "sim/run_constrained_region_search_unit_tests.R",
@@ -217,12 +217,12 @@ expected_manifest_paths <- c(
       c("aligned", "perturbed", "crossed"), ".csv"
     )
   }), use.names = FALSE),
-  "sim/output/computational_study/constrained_exact_gate1_audit.csv",
-  "sim/output/computational_study/tmlr_constrained_exact_summary.csv"
+  "sim/output/computational_study/constrained_exact_audit.csv",
+  "sim/output/computational_study/constrained_exact_summary.csv"
 )
 expect_true(
   identical(manifest_paths, expected_manifest_paths),
-  "Manifest does not exactly match the focused 23-file allowlist."
+  "Manifest does not exactly match the 23 released files."
 )
 expect_true(
   !anyNA(manifest_paths) && all(nzchar(manifest_paths)),
@@ -361,9 +361,9 @@ replications <- seq_len(as.integer(
 ))
 protocol_id <- as.character(protocol$protocol_id)
 score_budget <- as.integer(
-  protocol$global_design$frozen_exact_study_decision$score_budget
+  protocol$global_design$production_settings$score_budget
 )
-seed_base <- as.integer(protocol$seed_registry$exact_production_base)
+seed_base <- as.integer(protocol$seed_registry$production_base)
 required_exact_columns <- c(
   "protocol_id", "run_mode", "registered_production", "p", "regime",
   "replication", "epsilon", "delta", "interval_mode", "score_oracle",
@@ -395,7 +395,7 @@ for (p_index in seq_along(dimensions)) {
     )
     expect_true(
       all(rows$protocol_id == protocol_id) &&
-        all(rows$run_mode == "full") &&
+        all(rows$run_mode == "production") &&
         all(rows$registered_production),
       paste(path, "contains an unregistered or mismatched protocol row.")
     )
@@ -541,12 +541,12 @@ compare_derived <- function(saved, recomputed, keys, label) {
     isTRUE(all.equal(
       saved, recomputed, tolerance = 1e-12, check.attributes = FALSE
     )),
-    paste(label, "does not match recomputation from the canonical rows.")
+    paste(label, "does not match recomputation from the production rows.")
   )
 }
 
 summary_path <- file.path(
-  raw_directory, "tmlr_constrained_exact_summary.csv"
+  raw_directory, "constrained_exact_summary.csv"
 )
 summary <- read_required(summary_path)
 expect_true(
@@ -554,7 +554,7 @@ expect_true(
   "The exact-study summary does not have 48 complete cells."
 )
 summary_recomputed <- recompute_derived(
-  file.path("sim", "summarize_tmlr_revision_results.R")
+  file.path("sim", "summarize_study_results.R")
 )
 compare_derived(
   summary, summary_recomputed,
@@ -562,9 +562,9 @@ compare_derived(
   "Exact-study summary"
 )
 
-gate1_path <- file.path(raw_directory, "constrained_exact_gate1_audit.csv")
-gate1 <- read_required(gate1_path)
-expected_gate_checks <- c(
+audit_path <- file.path(raw_directory, "constrained_exact_audit.csv")
+audit <- read_required(audit_path)
+expected_audit_checks <- c(
   "expected_rows",
   "deterministic_exactness_and_sandwich",
   "stochastic_simultaneous_coverage_rate",
@@ -574,14 +574,14 @@ expected_gate_checks <- c(
   "implementation_errors"
 )
 expect_true(
-  identical(as.character(gate1$check), expected_gate_checks) &&
-    nrow(gate1) == 7L && all(gate1$passed),
-  "The seven-check Gate 1 audit is absent, reordered, or did not pass."
+  identical(as.character(audit$check), expected_audit_checks) &&
+    nrow(audit) == 7L && all(audit$passed),
+  "The seven-check protocol audit is absent, reordered, or did not pass."
 )
-gate1_recomputed <- recompute_derived(
+audit_recomputed <- recompute_derived(
   file.path("sim", "audit_constrained_exact_production.R")
 )
-compare_derived(gate1, gate1_recomputed, "check", "Gate 1 audit")
+compare_derived(audit, audit_recomputed, "check", "Protocol audit")
 
 message(sprintf(
   paste(

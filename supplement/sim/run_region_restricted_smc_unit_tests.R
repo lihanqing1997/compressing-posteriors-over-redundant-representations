@@ -156,26 +156,6 @@ expect_true(
   "pilot/fixed evidence interval missed the exact finite-region evidence"
 )
 
-selection <- select_region_union(
-  log_evidence = log(c(60, 30, 10)),
-  costs = c(3L, 1L, 1L),
-  lambda = 0.15
-)
-expect_true(
-  identical(selection$selected, c(1L, 2L)),
-  "evidence-cost frontier selected the wrong region union"
-)
-expect_near(
-  regional_omitted_mass_bound(
-    log_evidence = log(c(60, 30, 10)),
-    selected = selection$selected,
-    log_error_bound = 0
-  ),
-  0.1,
-  1e-12,
-  "exact omitted-mass calculation failed"
-)
-
 exact_epsilon_selection <- select_region_union_epsilon(
   log_evidence_lower = log(c(60, 30, 10)),
   costs = c(3L, 1L, 1L),
@@ -273,40 +253,6 @@ for (trial in seq_len(250L)) {
   )
 }
 
-# A discrete constrained optimum need not minimize any positive weighted sum.
-unsupported_mass <- c(0.5, 0.1, 0.4)
-unsupported_cost <- c(1L, 1L, 2L)
-unsupported_constrained <- select_region_union_epsilon(
-  log(unsupported_mass), unsupported_cost, epsilon = 0.4
-)
-expect_true(
-  unsupported_constrained$budget == 2L &&
-    identical(unsupported_constrained$selected, c(1L, 2L)),
-  "unsupported constrained-frontier example changed"
-)
-penalty_grid <- exp(seq(log(1e-6), log(100), length.out = 2000L))
-penalty_selected <- lapply(penalty_grid, function(lambda) {
-  select_region_union(log(unsupported_mass), unsupported_cost, lambda)$selected
-})
-expect_true(
-  !any(vapply(
-    penalty_selected,
-    function(selected) identical(selected, c(1L, 2L)),
-    logical(1)
-  )),
-  "a penalty unexpectedly recovered the unsupported constrained optimum"
-)
-
-required <- regional_particle_requirement(
-  rho = log(2),
-  relative_error = 0.1,
-  n_regions = 4,
-  delta = 0.05
-)
-expect_true(
-  required == ceiling(50 * log(160)),
-  "regional particle-requirement formula failed"
-)
 preflight <- regional_evidence_preflight(
   rho = log(2),
   relative_error = 0.1,
@@ -317,29 +263,6 @@ expect_true(
   preflight$required_paths == ceiling(50 * log(40)) &&
     !preflight$feasible,
   "regional evidence preflight did not expose an inadequate budget"
-)
-
-singleton_regions <- lapply(seq_len(nrow(supports)), function(i) {
-  new_enumerated_region(
-    supports[i, , drop = FALSE],
-    cost = c(3L, 1L, 1L, 3L)[i],
-    label = paste0("cell-", i)
-  )
-})
-set.seed(20260725)
-full_fit <- fit_region_restricted_smc(
-  regions = singleton_regions,
-  log_score_fn = score_function,
-  lambda = 0.15,
-  log_error_bound = 0,
-  n_particles = 4L,
-  mutation_steps = 0L
-)
-expect_true(
-  length(full_fit$selected) >= 1L &&
-    is.finite(full_fit$omitted_mass_bound) &&
-    full_fit$total_score_evaluations == 16L,
-  "end-to-end regional SMC interface failed"
 )
 
 all_supports_four <- as.matrix(expand.grid(
@@ -617,44 +540,10 @@ exact_tree_evaluator <- function(node) {
     fit = list(exact = TRUE)
   )
 }
-set.seed(20260725)
-tree_fit <- certified_tree_region_search(
-  tree = tree,
-  log_score_fn = tree_score_function,
-  evidence_evaluator = exact_tree_evaluator,
-  lambda = 0.1,
-  objective_tolerance = 0,
-  omitted_mass_tolerance = 0.03
-)
-expect_true(
-  tree_fit$certified &&
-    identical(tree_fit$selected_ids, "leaf-1") &&
-    tree_fit$omitted_mass_bound <= 0.03 &&
-    tree_fit$actions == 1L &&
-    tree_fit$evidence_score_evaluations == 0L,
-  "certified best-first search did not stop at the valid regional certificate"
-)
-
-epsilon_state <- rrs_tree_epsilon_search_state(
-  tree_fit$nodes,
-  tree_fit$frontier_ids,
-  epsilon = 0.03
-)
-expect_true(
-  epsilon_state$cost_lower == 1L &&
-    epsilon_state$cost_upper == 1L &&
-    epsilon_state$cost_gap == 0 &&
-    epsilon_state$bracket_consistent &&
-    identical(epsilon_state$selected_ids, "leaf-1") &&
-    epsilon_state$omitted_mass_bound <= 0.03,
-  "exact tree intervals did not collapse the constrained cost bracket"
-)
-
 epsilon_tree_fit <- certified_tree_region_search(
   tree = tree,
   log_score_fn = tree_score_function,
   evidence_evaluator = exact_tree_evaluator,
-  selection_mode = "epsilon",
   epsilon = 0.03,
   cost_tolerance = 0
 )
@@ -699,9 +588,8 @@ conflict_fit <- certified_tree_region_search(
   tree = new_region_tree(conflict_nodes, "root"),
   log_score_fn = tree_score_function,
   evidence_evaluator = conflict_evaluator,
-  lambda = 0.1,
-  objective_tolerance = 0,
-  omitted_mass_tolerance = 0.03
+  epsilon = 0.03,
+  cost_tolerance = 0
 )
 expect_true(
   identical(conflict_fit$status, "evidence_interval_conflict") &&
@@ -761,12 +649,11 @@ set.seed(20260725)
 certified_fit <- fit_certified_region_tree(
   tree = small_group_tree,
   log_score_fn = prior_log_score,
-  lambda = 0.05,
+  epsilon = 0.2,
+  cost_tolerance = 0,
   n_pilot = 16L,
   n_paths = 16L,
   n_local_particles = 16L,
-  objective_tolerance = 0,
-  omitted_mass_tolerance = 0.2,
   max_actions = 10L
 )
 expect_true(
@@ -786,7 +673,6 @@ selection_only_fit <- fit_certified_region_selection(
   n_pilot = 16L,
   n_paths = 16L,
   max_actions = 10L,
-  selection_mode = "epsilon",
   epsilon = 0.2,
   cost_tolerance = 0
 )
@@ -801,12 +687,12 @@ set.seed(20260725)
 uncertified_fit <- fit_certified_region_tree(
   tree = small_group_tree,
   log_score_fn = prior_log_score,
-  lambda = 10,
+  epsilon = 0.01,
+  cost_tolerance = 0,
   n_pilot = 16L,
   n_paths = 16L,
   n_local_particles = 16L,
-  objective_tolerance = 0,
-  omitted_mass_tolerance = 0.01,
+  max_score_evaluations = 1L,
   max_actions = 1L
 )
 expect_true(
@@ -1028,7 +914,6 @@ budget_fit <- certified_tree_region_search(
   tree = budget_tree,
   log_score_fn = budget_score,
   evidence_evaluator = budget_evaluator,
-  selection_mode = "epsilon",
   epsilon = 0.5,
   cost_tolerance = 0,
   max_score_evaluations = 2L
@@ -1057,7 +942,6 @@ preflight_fit <- certified_tree_region_search(
   tree = budget_tree,
   log_score_fn = budget_score,
   evidence_evaluator = preflight_evaluator,
-  selection_mode = "epsilon",
   epsilon = 0.5,
   cost_tolerance = 0,
   max_score_evaluations = 100L

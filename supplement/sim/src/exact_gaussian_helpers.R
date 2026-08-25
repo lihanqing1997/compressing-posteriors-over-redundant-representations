@@ -1,9 +1,7 @@
 # Gaussian and exact-table helpers for the constrained exact study.
 #
-# This focused release module contains only the score, synthetic-design, and
-# factorized-reference utilities required by the released production runner and
-# its unit tests. The broader internal benchmark helper is intentionally not a
-# release dependency.
+# This module contains the score, synthetic-design, and factorized-reference
+# utilities required by the production runner and its unit tests.
 
 cb_log_sum_exp <- function(x) {
   finite <- is.finite(x)

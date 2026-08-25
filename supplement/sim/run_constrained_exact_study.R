@@ -24,25 +24,28 @@ split_values <- function(value) {
 }
 
 arguments <- parse_arguments()
-mode <- if (is.null(arguments$mode)) "smoke" else arguments$mode
-fail_fast <- identical(arguments$`fail-fast`, "true")
-if (fail_fast && mode != "smoke") {
-  stop("fail-fast is allowed only in excluded smoke mode.", call. = FALSE)
-}
-if (fail_fast) {
-  options(error = function() {
-    traceback(20L)
-    quit(save = "no", status = 1L, runLast = FALSE)
-  })
-}
-if (!mode %in% c("smoke", "pilot", "full")) {
-  stop("mode must be smoke, pilot, or full.", call. = FALSE)
+allowed_arguments <- c(
+  "p", "regime", "interval", "epsilon", "replications",
+  "replication-ids", "budget", "n-paths", "output"
+)
+unknown_arguments <- setdiff(names(arguments), allowed_arguments)
+if (length(unknown_arguments) > 0L) {
+  stop(
+    paste0(
+      "Unknown argument",
+      if (length(unknown_arguments) == 1L) "" else "s",
+      ": ",
+      paste0("--", unknown_arguments, collapse = ", "),
+      "."
+    ),
+    call. = FALSE
+  )
 }
 protocol <- yaml::read_yaml(file.path(
   "sim", "config", "constrained_exact_protocol.yml"
 ))
-if (!identical(protocol$status, "exact_component_frozen_before_production")) {
-  stop("The exact-study component must be frozen before any run.", call. = FALSE)
+if (!identical(protocol$status, "frozen_before_production")) {
+  stop("The exact-study protocol must be frozen before any run.", call. = FALSE)
 }
 
 registered_dimensions <- as.integer(unlist(
@@ -85,20 +88,8 @@ if (any(!dimensions %in% registered_dimensions) ||
     any(!epsilon_grid %in% registered_epsilon)) {
   stop("A requested cell is outside the frozen protocol.", call. = FALSE)
 }
-diagnostic_data_seed <- if (is.null(arguments$`diagnostic-data-seed`)) {
-  NULL
-} else {
-  as.integer(arguments$`diagnostic-data-seed`)
-}
-if (!is.null(diagnostic_data_seed) && mode != "smoke") {
-  stop("A diagnostic data-seed override is allowed only in excluded smoke mode.", call. = FALSE)
-}
-
-default_replications <- switch(
-  mode,
-  smoke = as.integer(protocol$global_design$smoke_replications_per_cell),
-  pilot = as.integer(protocol$global_design$pilot_replications_per_cell),
-  full = as.integer(protocol$global_design$production_replications_per_cell)
+default_replications <- as.integer(
+  protocol$global_design$production_replications_per_cell
 )
 if (!is.null(arguments$replications) && !is.null(arguments$`replication-ids`)) {
   stop("Use only one of --replications or --replication-ids.", call. = FALSE)
@@ -112,33 +103,29 @@ replications <- if (!is.null(arguments$`replication-ids`)) {
   if (length(requested) == 1L) seq_len(requested) else requested
 }
 if (any(!is.finite(replications)) || any(replications < 1L) ||
-    (mode == "full" && any(replications > default_replications))) {
+    any(replications > default_replications)) {
   stop("Invalid replication request.", call. = FALSE)
 }
 
-if (mode == "full" && (is.null(arguments$budget) || is.null(arguments$`n-paths`))) {
+production_settings <- protocol$global_design$production_settings
+score_budget <- if (is.null(arguments$budget)) {
+  as.numeric(production_settings$score_budget)
+} else {
+  as.numeric(arguments$budget)
+}
+n_paths <- if (is.null(arguments$`n-paths`)) {
+  as.integer(production_settings$minimum_paths)
+} else {
+  as.integer(arguments$`n-paths`)
+}
+if (score_budget != as.numeric(production_settings$score_budget) ||
+    n_paths != as.integer(production_settings$minimum_paths)) {
   stop(
-    "Full production requires the pilot-frozen --budget and --n-paths values.",
+    "Registered production must use the protocol score budget and path count.",
     call. = FALSE
   )
 }
-score_budget <- if (is.null(arguments$budget)) 250000L else as.numeric(arguments$budget)
-n_paths <- if (is.null(arguments$`n-paths`)) 100L else as.integer(arguments$`n-paths`)
-if (mode == "full") {
-  frozen <- protocol$global_design$frozen_exact_study_decision
-  if (score_budget != as.numeric(frozen$score_budget) ||
-      n_paths != as.integer(frozen$minimum_paths)) {
-    stop(
-      "Full production must use the pilot-frozen score budget and path count.",
-      call. = FALSE
-    )
-  }
-}
-max_actions <- if (is.null(arguments$`max-actions`)) {
-  if (mode == "smoke") 100L else 100000L
-} else {
-  as.integer(arguments$`max-actions`)
-}
+max_actions <- as.integer(production_settings$action_budget)
 if (!is.finite(score_budget) || score_budget < 1 ||
     !is.finite(max_actions) || max_actions < 1L ||
     !n_paths %in% as.integer(unlist(
@@ -148,17 +135,10 @@ if (!is.finite(score_budget) || score_budget < 1 ||
   stop("Invalid score budget or production path count.", call. = FALSE)
 }
 
-default_output <- if (mode == "full") {
-  file.path(
-    "sim", "output", "computational_study",
-    "constrained_exact_production_full.csv"
-  )
-} else {
-  file.path(
-    "..", "build_tmlr", "tmlr_revision_runs", mode,
-    paste0("constrained_exact_", mode, ".csv")
-  )
-}
+default_output <- file.path(
+  "..", "recomputed",
+  "constrained_exact_production.csv"
+)
 output_path <- if (is.null(arguments$output)) default_output else arguments$output
 dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
 
@@ -244,14 +224,7 @@ leaf_reference <- function(supports,
 }
 
 data_seed_for <- function(p, regime, replication) {
-  if (!is.null(diagnostic_data_seed)) return(diagnostic_data_seed)
-  base_name <- switch(
-    mode,
-    smoke = "smoke_base",
-    pilot = "pilot_base",
-    full = "exact_production_base"
-  )
-  base <- as.integer(protocol$seed_registry[[base_name]])
+  base <- as.integer(protocol$seed_registry$production_base)
   p_index <- match(p, registered_dimensions)
   regime_index <- match(regime, registered_regimes)
   base + 100000L * p_index + 10000L * regime_index +
@@ -450,7 +423,6 @@ run_cell <- function(p, regime, replication, epsilon, interval_mode) {
         evidence_method = as.character(
           protocol$global_design$evidence_settings$registered_estimator
         ),
-        selection_mode = "epsilon",
         epsilon = epsilon,
         cost_tolerance = as.numeric(protocol$global_design$cost_gap_tolerance),
         max_score_evaluations = score_budget - screening_requests,
@@ -518,8 +490,8 @@ run_cell <- function(p, regime, replication, epsilon, interval_mode) {
   )
   data.frame(
     protocol_id = protocol$protocol_id,
-    run_mode = mode,
-    registered_production = mode == "full",
+    run_mode = "production",
+    registered_production = TRUE,
     p = p,
     regime = regime,
     replication = replication,
@@ -610,15 +582,12 @@ for (p in dimensions) {
       for (epsilon in epsilon_grid) {
         for (interval_mode in interval_modes) {
           index <- index + 1L
-          rows[[index]] <- if (fail_fast) {
-            run_cell(p, regime, replication, epsilon, interval_mode)
-          } else {
-            tryCatch(
-              run_cell(p, regime, replication, epsilon, interval_mode),
-              error = function(error) data.frame(
+          rows[[index]] <- tryCatch(
+            run_cell(p, regime, replication, epsilon, interval_mode),
+            error = function(error) data.frame(
               protocol_id = protocol$protocol_id,
-              run_mode = mode,
-              registered_production = mode == "full",
+              run_mode = "production",
+              registered_production = TRUE,
               p = p,
               regime = regime,
               replication = replication,
@@ -644,21 +613,18 @@ for (p in dimensions) {
               error_message = conditionMessage(error),
               stringsAsFactors = FALSE
               )
-            )
-          }
+          )
           message(sprintf(
-            "[%d] mode=%s p=%d regime=%s rep=%d epsilon=%.2f interval=%s status=%s",
-            index, mode, p, regime, replication, epsilon, interval_mode,
+            "[%d] p=%d regime=%s rep=%d epsilon=%.2f interval=%s status=%s",
+            index, p, regime, replication, epsilon, interval_mode,
             rows[[index]]$status[1L]
           ))
-          if (mode == "full") {
-            write.csv(
-              bind_output_rows(rows),
-              paste0(output_path, ".partial"),
-              row.names = FALSE,
-              na = ""
-            )
-          }
+          write.csv(
+            bind_output_rows(rows),
+            paste0(output_path, ".partial"),
+            row.names = FALSE,
+            na = ""
+          )
         }
       }
     }
@@ -670,7 +636,6 @@ write.csv(output, output_path, row.names = FALSE, na = "")
 partial_path <- paste0(output_path, ".partial")
 if (file.exists(partial_path)) unlink(partial_path)
 cat(sprintf(
-  "Wrote %d %s rows to %s. Registered production=%s.\n",
-  nrow(output), mode, normalizePath(output_path, winslash = "/", mustWork = FALSE),
-  mode == "full"
+  "Wrote %d registered production rows to %s.\n",
+  nrow(output), normalizePath(output_path, winslash = "/", mustWork = FALSE)
 ))

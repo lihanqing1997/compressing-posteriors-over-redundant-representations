@@ -17,11 +17,11 @@ as_numbers <- function(x) as.numeric(unlist(x, use.names = FALSE))
 as_characters <- function(x) as.character(unlist(x, use.names = FALSE))
 
 assert(
-  identical(protocol$status, "exact_component_frozen_before_production"),
-  "The exact-study component is not marked as frozen before production."
+  identical(protocol$status, "frozen_before_production"),
+  "The exact-study protocol is not marked as frozen before production."
 )
 assert(
-  identical(protocol$protocol_id, "constrained-tmlr-revision-2026-08-13"),
+  identical(protocol$protocol_id, "regional-compression-exact-study-2026-08-13"),
   "Unexpected protocol identifier."
 )
 
@@ -38,10 +38,8 @@ assert(
   "The confidence or cost-lattice setting changed."
 )
 assert(
-  as.integer(design$production_replications_per_cell) == 100L &&
-    as.integer(design$pilot_replications_per_cell) == 5L &&
-    as.integer(design$smoke_replications_per_cell) == 2L,
-  "The replication counts changed."
+  as.integer(design$production_replications_per_cell) == 100L,
+  "The production replication count changed."
 )
 
 primary_cost <- protocol$cost_contract$tree_parameters
@@ -68,13 +66,12 @@ assert(
   identical(design$evidence_settings$registered_estimator, "iid"),
   "The stochastic evidence estimator changed."
 )
-frozen_exact <- design$frozen_exact_study_decision
+production_settings <- design$production_settings
 assert(
-  as.integer(frozen_exact$score_budget) == 25000L &&
-    as.integer(frozen_exact$minimum_paths) == 100L &&
-    as.integer(frozen_exact$qualifying_aligned_p12_pilots) == 5L &&
-    as.integer(frozen_exact$total_aligned_p12_pilots) == 5L,
-  "The pilot-frozen exact-study decision changed."
+  as.integer(production_settings$score_budget) == 25000L &&
+    as.integer(production_settings$minimum_paths) == 100L &&
+    as.integer(production_settings$action_budget) == 100000L,
+  "The exact-study production settings changed."
 )
 exact_cell_count <- length(exact_dimensions) * length(exact_regimes) *
   length(epsilon) * length(interval_modes)
@@ -87,7 +84,7 @@ assert(
 
 # Confirm data reuse within dimension, regime, and replication, while keeping
 # algorithm seeds distinct across tolerance and interval mode.
-seed_base <- as.integer(protocol$seed_registry$exact_production_base)
+seed_base <- as.integer(protocol$seed_registry$production_base)
 seed_rows <- expand.grid(
   p_index = seq_along(exact_dimensions),
   regime_index = seq_along(exact_regimes),
@@ -112,9 +109,9 @@ assert(
 )
 assert(!anyDuplicated(algorithm_seeds), "The algorithm seeds collide.")
 assert(
-  identical(protocol$gate_1$status, "passed") &&
-    length(protocol$gate_1$pass_requirements) >= 6L,
-  "The exact-study decision gate is incomplete."
+  identical(protocol$acceptance_checks$status, "passed") &&
+    length(protocol$acceptance_checks$requirements) >= 6L,
+  "The exact-study acceptance checks are incomplete."
 )
 
 cat(
